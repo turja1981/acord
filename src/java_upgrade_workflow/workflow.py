@@ -2,9 +2,11 @@
 Java Upgrade LangGraph Workflow
 
 Main workflow orchestration using LangGraph for the Java/Spring Boot upgrade process.
+Supports both single-module and multi-module Maven projects with parent-child dependencies.
 """
 
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Literal, Optional
 
 from langgraph.graph import StateGraph, END
@@ -24,8 +26,15 @@ from java_upgrade_workflow.state.upgrade_state import (
     UpgradeConfig,
     UpgradePhase,
     UpgradeState,
+    ModuleState,
 )
+from java_upgrade_workflow.tools.maven_tools import MultiModulePomAnalyzer
 from java_upgrade_workflow.utils.logging import get_logger
+from java_upgrade_workflow.utils.comparison_report import (
+    ComparisonReportGenerator,
+    ChangeType,
+)
+from java_upgrade_workflow.utils.agent_tracking import AgentTracker
 
 
 logger = get_logger(__name__)
@@ -80,6 +89,10 @@ class JavaUpgradeWorkflow:
 
         # Checkpointer for state persistence
         self.checkpointer = MemorySaver()
+
+        # Comparison report generator and agent tracker (initialized per run)
+        self.report_generator: Optional[ComparisonReportGenerator] = None
+        self.agent_tracker: Optional[AgentTracker] = None
 
     def _build_graph(self) -> StateGraph:
         """Build the LangGraph workflow graph."""
@@ -216,6 +229,40 @@ class JavaUpgradeWorkflow:
         # If no progress made, stop
         return "end"
 
+    def _detect_multi_module_project(self, project_path: str) -> tuple[bool, Optional[Any]]:
+        """Detect if the project is a multi-module Maven project."""
+        try:
+            analyzer = MultiModulePomAnalyzer(project_path)
+            project = analyzer.analyze()
+            return project.is_multi_module, project
+        except Exception:
+            return False, None
+
+    def _initialize_module_states(
+        self,
+        project_info: ProjectInfo,
+        multi_module_project: Any,
+    ) -> None:
+        """Initialize module states for a multi-module project."""
+        if not multi_module_project:
+            return
+
+        for module in multi_module_project.modules:
+            project_info.module_states[module.name] = ModuleState(
+                name=module.name,
+                path=module.path,
+                pom_path=module.pom_path,
+                artifact_id=module.artifact_id,
+                is_parent=module.is_parent,
+                parent_name=module.parent_artifact_id,
+                java_version=module.java_version,
+                spring_boot_version=module.spring_boot_version,
+                dependencies=module.dependencies,
+            )
+
+        project_info.build_order = multi_module_project.module_order
+        project_info.shared_properties = multi_module_project.shared_properties
+
     def run(
         self,
         project_path: str,
@@ -223,6 +270,8 @@ class JavaUpgradeWorkflow:
         target_spring_boot_version: str = "3.2.0",
         run_tests: bool = True,
         dry_run: bool = False,
+        generate_report: bool = True,
+        report_output_dir: Optional[str] = None,
     ) -> UpgradeState:
         """
         Execute the upgrade workflow.
@@ -233,6 +282,8 @@ class JavaUpgradeWorkflow:
             target_spring_boot_version: Target Spring Boot version
             run_tests: Whether to run tests after upgrade
             dry_run: If True, don't make actual changes
+            generate_report: Whether to generate a comparison report
+            report_output_dir: Directory for report output (default: project_path/upgrade_reports)
 
         Returns:
             Final upgrade state with results
@@ -240,9 +291,41 @@ class JavaUpgradeWorkflow:
         logger.info(f"Starting Java upgrade workflow for: {project_path}")
         logger.info(f"Target: Java {target_java_version}, Spring Boot {target_spring_boot_version}")
 
+        # Initialize comparison report generator and agent tracker
+        self.report_generator = ComparisonReportGenerator(project_path)
+        self.agent_tracker = AgentTracker()
+
+        # Detect multi-module project
+        is_multi_module, multi_module_project = self._detect_multi_module_project(project_path)
+
+        if is_multi_module:
+            logger.info(f"Detected multi-module project with {len(multi_module_project.modules)} modules")
+            logger.info(f"Build order: {multi_module_project.module_order}")
+
+        # Initialize project info
+        project_info = ProjectInfo(
+            project_path=project_path,
+            is_multi_module=is_multi_module,
+            modules=multi_module_project.module_order if multi_module_project else [],
+        )
+
+        # Initialize module states for multi-module projects
+        if is_multi_module and multi_module_project:
+            self._initialize_module_states(project_info, multi_module_project)
+
+            # Set report project info
+            self.report_generator.set_project_info(
+                project_name=multi_module_project.parent_module.artifact_id if multi_module_project.parent_module else "unknown",
+                is_multi_module=True,
+                source_java=multi_module_project.parent_module.java_version if multi_module_project.parent_module else None,
+                target_java=target_java_version,
+                source_spring=multi_module_project.parent_module.spring_boot_version if multi_module_project.parent_module else None,
+                target_spring=target_spring_boot_version,
+            )
+
         # Initialize state
         initial_state = UpgradeState(
-            project_info=ProjectInfo(project_path=project_path),
+            project_info=project_info,
             upgrade_config=UpgradeConfig(
                 target_java_version=target_java_version,
                 target_spring_boot_version=target_spring_boot_version,
@@ -255,6 +338,7 @@ class JavaUpgradeWorkflow:
         config = {"configurable": {"thread_id": f"upgrade-{datetime.now().isoformat()}"}}
 
         # Run the workflow
+        final_state = initial_state
         try:
             for event in self.graph.stream(initial_state, config):
                 # Log progress
@@ -265,19 +349,65 @@ class JavaUpgradeWorkflow:
                             f"Build: {'OK' if node_state.build_successful else 'FAIL'}, "
                             f"Errors: {len(node_state.current_errors)}"
                         )
+                        final_state = node_state
 
             # Get final state
-            final_state = self.graph.get_state(config)
-            if final_state and final_state.values:
-                return UpgradeState(**final_state.values)
-
-            return initial_state
+            graph_state = self.graph.get_state(config)
+            if graph_state and graph_state.values:
+                final_state = UpgradeState(**graph_state.values)
 
         except Exception as e:
             logger.error(f"Workflow failed with error: {e}")
-            initial_state.fatal_error = str(e)
-            initial_state.phase = UpgradePhase.FAILED
-            return initial_state
+            final_state.fatal_error = str(e)
+            final_state.phase = UpgradePhase.FAILED
+
+        # Generate comparison report
+        if generate_report:
+            self._generate_comparison_report(final_state, report_output_dir)
+
+        return final_state
+
+    def _generate_comparison_report(
+        self,
+        state: UpgradeState,
+        output_dir: Optional[str] = None,
+    ) -> None:
+        """Generate comparison report for the upgrade."""
+        if not self.report_generator:
+            return
+
+        # Record all changes from the state
+        for change in state.code_changes:
+            self.report_generator.record_change(
+                file_path=change.file_path,
+                change_type=ChangeType.MODIFIED if change.change_type == "modify" else ChangeType.CREATED,
+                agent_name=change.agent,
+                description=change.description,
+                new_content=change.new_content,
+            )
+
+        for change in state.pom_changes:
+            self.report_generator.record_change(
+                file_path=change.file_path,
+                change_type=ChangeType.MODIFIED,
+                agent_name=change.agent,
+                description=change.description,
+                new_content=change.new_content,
+                is_parent_pom="parent" in change.file_path.lower() or change.file_path.endswith("pom.xml"),
+            )
+
+        # Determine output directory
+        if output_dir is None:
+            output_dir = str(Path(state.project_info.project_path) / "upgrade_reports") if state.project_info else "./upgrade_reports"
+
+        # Save reports
+        try:
+            report_paths = self.report_generator.save_reports(output_dir)
+            logger.info(f"Comparison reports generated:")
+            for format_type, path in report_paths.items():
+                logger.info(f"  - {format_type}: {path}")
+        except Exception as e:
+            logger.error(f"Failed to generate comparison report: {e}")
 
     async def run_async(
         self,

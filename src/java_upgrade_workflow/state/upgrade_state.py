@@ -103,6 +103,31 @@ class TestResult(BaseModel):
     error_tests: list[str] = Field(default_factory=list)
 
 
+class ModuleState(BaseModel):
+    """State for a single module in a multi-module project."""
+
+    name: str
+    path: str
+    pom_path: str
+    artifact_id: str
+    is_parent: bool = False
+    parent_name: Optional[str] = None
+
+    # Module-specific state
+    java_version: Optional[str] = None
+    spring_boot_version: Optional[str] = None
+    dependencies: list[DependencyInfo] = Field(default_factory=list)
+
+    # Module build state
+    build_successful: bool = False
+    tests_passed: bool = False
+    errors: list[ErrorInfo] = Field(default_factory=list)
+
+    # Changes made to this module
+    code_changes: list[CodeChange] = Field(default_factory=list)
+    pom_changes: list[CodeChange] = Field(default_factory=list)
+
+
 class ProjectInfo(BaseModel):
     """Information about the Java project."""
 
@@ -115,6 +140,11 @@ class ProjectInfo(BaseModel):
     modules: list[str] = Field(default_factory=list)
     is_multi_module: bool = False
     parent_pom: Optional[str] = None
+
+    # Multi-module specific
+    module_states: dict[str, ModuleState] = Field(default_factory=dict)
+    build_order: list[str] = Field(default_factory=list)
+    shared_properties: dict[str, str] = Field(default_factory=dict)
 
 
 class UpgradeConfig(BaseModel):

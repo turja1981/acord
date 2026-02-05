@@ -8,6 +8,10 @@ from java_upgrade_workflow.state.upgrade_state import (
     ErrorInfo,
     AgentMessage,
     UpgradePhase,
+    ModuleState,
+    ProjectInfo,
+    UpgradeConfig,
+    TestResult,
 )
 
 __all__ = [
@@ -18,4 +22,8 @@ __all__ = [
     "ErrorInfo",
     "AgentMessage",
     "UpgradePhase",
+    "ModuleState",
+    "ProjectInfo",
+    "UpgradeConfig",
+    "TestResult",
 ]

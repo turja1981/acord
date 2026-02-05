@@ -8,8 +8,11 @@ A comprehensive multi-agent system for automatically upgrading Java and Spring B
 - **LangGraph Orchestration**: Graph-based workflow with conditional routing and state management
 - **LiteLLM Integration**: Externalized LLM configuration supporting multiple providers (OpenAI, Anthropic, Azure, Bedrock)
 - **Automatic Error Resolution**: Intelligent error detection and fix generation
-- **Maven Integration**: Full Maven build lifecycle support
+- **Maven Integration**: Full Maven build lifecycle support with multi-module project support
 - **Git Integration**: Automatic branching, committing, and change tracking
+- **Multi-Module Projects**: Full support for Maven parent-child modular projects with POM dependencies
+- **Comparison Reports**: Detailed reports showing all file changes with diffs and agent tracking
+- **Agent Tracking Comments**: Common tracking comments added to all modified files for auditability
 
 ## Architecture
 
@@ -226,13 +229,172 @@ asyncio.run(main())
 | `WebSecurityConfigurerAdapter` | `SecurityFilterChain` |
 | `springfox` | `springdoc-openapi` |
 
+## Multi-Module Project Support
+
+The workflow fully supports Maven multi-module (parent-child) projects:
+
+### Structure Detection
+
+```bash
+my-multi-module-project/
+├── pom.xml              # Parent POM
+├── common/
+│   └── pom.xml          # Child module
+├── api/
+│   └── pom.xml          # Child module
+├── service/
+│   └── pom.xml          # Child module
+└── web/
+    └── pom.xml          # Child module
+```
+
+### Features
+
+- **Automatic Detection**: Automatically detects multi-module structure from parent POM
+- **Build Order Resolution**: Calculates correct build order based on inter-module dependencies
+- **Shared Properties**: Updates properties in parent POM that are inherited by children
+- **Module-Specific Changes**: Tracks changes per module for clear reporting
+- **Dependency Management**: Handles dependencyManagement section in parent POM
+
+### CLI Usage
+
+```bash
+# Multi-module project upgrade
+java-upgrade ./my-multi-module-project --java 21 --spring-boot 3.2.0
+
+# Build specific modules only
+java-upgrade ./my-multi-module-project -j 21 -s 3.2.0 --modules api,service
+```
+
+### Programmatic Usage
+
+```python
+from java_upgrade_workflow import JavaUpgradeWorkflow
+
+workflow = JavaUpgradeWorkflow()
+result = workflow.run(
+    project_path="./my-multi-module-project",
+    target_java_version="21",
+    target_spring_boot_version="3.2.0",
+)
+
+# Check module-specific results
+for module_name, module_state in result.project_info.module_states.items():
+    print(f"Module: {module_name}")
+    print(f"  Build: {'OK' if module_state.build_successful else 'FAIL'}")
+    print(f"  Changes: {len(module_state.code_changes)}")
+```
+
+## Comparison Reports
+
+The workflow generates comprehensive comparison reports showing all changes made:
+
+### Report Formats
+
+Reports are generated in multiple formats:
+- **Markdown** (`upgrade_report_TIMESTAMP.md`) - Human-readable with diffs
+- **JSON** (`upgrade_report_TIMESTAMP.json`) - Machine-readable for integration
+- **HTML** (`upgrade_report_TIMESTAMP.html`) - Styled HTML for web viewing
+
+### Report Contents
+
+```markdown
+# Java Upgrade Comparison Report
+
+## Project Information
+- Project: my-application
+- Multi-module: Yes (5 modules)
+
+## Upgrade Summary
+| Property | Before | After |
+|----------|--------|-------|
+| Java Version | 11 | 21 |
+| Spring Boot | 2.7.0 | 3.2.0 |
+
+## Change Statistics
+| Metric | Count |
+|--------|-------|
+| Total Files Changed | 47 |
+| Lines Added | +1,234 |
+| Lines Removed | -567 |
+
+## Changes by Agent
+| Agent | Files Changed |
+|-------|---------------|
+| code_migrator | 32 |
+| dependency_upgrader | 8 |
+| error_resolver | 7 |
+
+## Detailed File Changes
+### 📝 `src/main/java/com/example/Service.java`
+- **Type:** modified
+- **Agent:** code_migrator
+- **Description:** Migrated javax.persistence to jakarta.persistence
+
+<details>
+<summary>View Diff</summary>
+
+```diff
+- import javax.persistence.Entity;
++ import jakarta.persistence.Entity;
+```
+</details>
+```
+
+### Agent Tracking Comments
+
+All modified files include tracking comments for auditability:
+
+**Java/Kotlin files:**
+```java
+/*
+ * ============================================================================
+ * JAVA UPGRADE WORKFLOW - AUTOMATED MODIFICATION
+ * ============================================================================
+ * Agent: code_migrator v1.0.0
+ * Timestamp: 2024-01-15T10:30:00
+ * Change Type: migration
+ * Description: Migrated javax.persistence to jakarta.persistence
+ * Module: api
+ * Correlation ID: 20240115103000-0001
+ * ============================================================================
+ */
+```
+
+**XML/POM files:**
+```xml
+<!--
+  ============================================================================
+  JAVA UPGRADE WORKFLOW - AUTOMATED MODIFICATION
+  ============================================================================
+  Agent: dependency_upgrader v1.0.0
+  Timestamp: 2024-01-15T10:30:00
+  Change Type: dependency_update
+  Description: Upgraded Spring Boot to 3.2.0
+  Module: parent
+  Correlation ID: 20240115103000-0002
+  ============================================================================
+-->
+```
+
+### CLI Options for Reports
+
+```bash
+# Generate report to custom directory
+java-upgrade ./my-project -j 21 -s 3.2.0 --report-dir ./reports
+
+# Skip report generation
+java-upgrade ./my-project -j 21 -s 3.2.0 --no-report
+```
+
 ## Output
 
 After a successful upgrade, the workflow generates:
 
-1. **UPGRADE_REPORT.md** - Detailed report of all changes made
-2. **Git commits** - All changes committed with descriptive messages
-3. **Backup files** - Original files backed up as `.bak`
+1. **Comparison Reports** - Detailed reports in Markdown, JSON, and HTML formats
+2. **UPGRADE_REPORT.md** - Summary report with deployment checklist
+3. **Git commits** - All changes committed with descriptive messages
+4. **Backup files** - Original files backed up as `.bak`
 
 ## Development
 
