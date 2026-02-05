@@ -1,0 +1,164 @@
+# LiteLLM Configuration for Java Upgrade Workflow
+#
+# This file configures the LLM providers and models used by the upgrade agents.
+# For full documentation, see: https://docs.litellm.ai/
+#
+# Environment variables referenced:
+#   - OPENAI_API_KEY: OpenAI API key
+#   - ANTHROPIC_API_KEY: Anthropic API key
+#   - AZURE_API_KEY: Azure OpenAI API key
+#   - AZURE_API_BASE: Azure OpenAI endpoint URL
+
+# Global Settings
+# ---------------
+default_model: gpt-4-turbo
+enable_caching: true
+cache_type: local
+enable_logging: true
+log_level: INFO
+
+# Cost and Usage Tracking
+enable_cost_tracking: true
+budget_limit: null  # Set a USD limit, e.g., 50.0
+
+# Fallback Configuration
+enable_fallbacks: true
+fallback_strategy: sequential  # sequential or parallel
+
+# Model Configurations
+# --------------------
+# Define all available models and their settings
+
+models:
+  # OpenAI Models
+  gpt-4-turbo:
+    model_name: gpt-4-turbo-preview
+    provider: openai
+    api_key_env: OPENAI_API_KEY
+    max_tokens: 4096
+    temperature: 0.1
+    timeout: 120
+    max_retries: 3
+    input_cost_per_1k: 0.01
+    output_cost_per_1k: 0.03
+    requests_per_minute: 500
+    tokens_per_minute: 150000
+    fallback_models:
+      - gpt-4
+      - gpt-3.5-turbo
+
+  gpt-4:
+    model_name: gpt-4
+    provider: openai
+    api_key_env: OPENAI_API_KEY
+    max_tokens: 8192
+    temperature: 0.1
+    timeout: 180
+    max_retries: 3
+    input_cost_per_1k: 0.03
+    output_cost_per_1k: 0.06
+    fallback_models:
+      - gpt-3.5-turbo
+
+  gpt-3.5-turbo:
+    model_name: gpt-3.5-turbo
+    provider: openai
+    api_key_env: OPENAI_API_KEY
+    max_tokens: 4096
+    temperature: 0.1
+    timeout: 60
+    max_retries: 3
+    input_cost_per_1k: 0.0005
+    output_cost_per_1k: 0.0015
+
+  # Anthropic Models
+  claude-3-opus:
+    model_name: claude-3-opus-20240229
+    provider: anthropic
+    api_key_env: ANTHROPIC_API_KEY
+    max_tokens: 4096
+    temperature: 0.1
+    timeout: 180
+    max_retries: 3
+    input_cost_per_1k: 0.015
+    output_cost_per_1k: 0.075
+    fallback_models:
+      - claude-3-sonnet
+
+  claude-3-sonnet:
+    model_name: claude-3-sonnet-20240229
+    provider: anthropic
+    api_key_env: ANTHROPIC_API_KEY
+    max_tokens: 4096
+    temperature: 0.1
+    timeout: 120
+    max_retries: 3
+    input_cost_per_1k: 0.003
+    output_cost_per_1k: 0.015
+    fallback_models:
+      - claude-3-haiku
+
+  claude-3-haiku:
+    model_name: claude-3-haiku-20240307
+    provider: anthropic
+    api_key_env: ANTHROPIC_API_KEY
+    max_tokens: 4096
+    temperature: 0.1
+    timeout: 60
+    max_retries: 3
+    input_cost_per_1k: 0.00025
+    output_cost_per_1k: 0.00125
+
+  # Azure OpenAI (uncomment and configure if using Azure)
+  # azure-gpt-4:
+  #   model_name: azure/gpt-4
+  #   provider: azure
+  #   api_key_env: AZURE_API_KEY
+  #   api_base: ${AZURE_API_BASE}
+  #   max_tokens: 8192
+  #   temperature: 0.1
+  #   timeout: 180
+  #   max_retries: 3
+
+  # AWS Bedrock (uncomment and configure if using Bedrock)
+  # bedrock-claude:
+  #   model_name: bedrock/anthropic.claude-3-sonnet-20240229-v1:0
+  #   provider: bedrock
+  #   api_key_env: AWS_ACCESS_KEY_ID
+  #   max_tokens: 4096
+  #   temperature: 0.1
+  #   timeout: 180
+  #   max_retries: 3
+
+# Agent Model Assignments
+# -----------------------
+# Assign specific models to each agent based on their task requirements.
+#
+# Recommendations:
+#   - code_analyzer: Fast model for scanning large codebases
+#   - code_migrator: High-quality model for accurate code transformations
+#   - error_resolver: High-quality model for complex error diagnosis
+
+agent_models:
+  # Code analysis - needs to process many files quickly
+  code_analyzer: gpt-4-turbo
+
+  # Dependency management - straightforward task
+  dependency_upgrader: gpt-4-turbo
+
+  # Code migration - requires high accuracy for code transformations
+  # Claude excels at understanding and transforming code
+  code_migrator: claude-3-opus
+
+  # Build execution - mostly tool-based, model for analysis
+  build_agent: gpt-4-turbo
+
+  # Error resolution - needs deep understanding of errors and fixes
+  # Claude's reasoning abilities help with complex error diagnosis
+  error_resolver: claude-3-opus
+
+  # Deployment prep - documentation and validation
+  deployment_agent: gpt-4-turbo
+
+  # Workflow orchestration (if used)
+  orchestrator: gpt-4-turbo

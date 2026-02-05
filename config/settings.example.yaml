@@ -1,0 +1,63 @@
+# Java Upgrade Workflow Settings
+#
+# Copy this file to settings.yaml and customize for your project.
+# These settings can also be set via environment variables with the
+# JAVA_UPGRADE_ prefix (e.g., JAVA_UPGRADE_PROJECT_PATH).
+
+# Project Settings
+# ----------------
+project_path: "."
+output_dir: "./upgrade_output"
+verbose: false
+dry_run: false
+
+# LiteLLM configuration file path
+litellm_config_path: "./config/litellm_config.yaml"
+
+# Maven Settings
+# --------------
+maven:
+  maven_home: null  # Use system Maven if null
+  maven_opts: "-Xmx2g"
+  settings_file: null  # Path to custom settings.xml
+  local_repo: null  # Path to local repository
+  profiles: []  # Active Maven profiles
+  skip_tests: false
+  offline: false
+
+# Java Settings
+# -------------
+java:
+  java_home: null  # Use system Java if null
+  source_version: "11"  # Current project Java version
+  target_version: "21"  # Target Java version
+  supported_versions:
+    - "8"
+    - "11"
+    - "17"
+    - "21"
+
+# Spring Boot Settings
+# --------------------
+spring_boot:
+  current_version: null  # Auto-detected from pom.xml
+  target_version: "3.2.0"
+  migration_guide_url: "https://github.com/spring-projects/spring-boot/wiki/Spring-Boot-3.0-Migration-Guide"
+
+# Workflow Settings
+# -----------------
+workflow:
+  max_iterations: 10  # Maximum build/fix cycles
+  max_build_retries: 5  # Max retries for transient build failures
+  error_resolution_attempts: 3  # Attempts per error type
+  parallel_agents: false  # Enable parallel agent execution (experimental)
+  checkpoint_enabled: true  # Enable workflow checkpoints for resume
+  checkpoint_dir: ".workflow_checkpoints"
+
+# Git Settings
+# ------------
+git:
+  auto_commit: true  # Automatically commit changes
+  commit_prefix: "[java-upgrade]"  # Prefix for commit messages
+  branch_prefix: "upgrade/java-"  # Prefix for upgrade branches
+  create_branch: true  # Create new branch for upgrade
